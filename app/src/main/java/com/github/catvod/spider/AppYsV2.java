@@ -28,14 +28,12 @@ import java.util.regex.Pattern;
  * Author: 群友 不负此生
  */
 public class AppYsV2 extends Spider {
+    private String extString = "";
 
     @Override
     public void init(Context context, String extend) {
         super.init(context, extend);
-        try {
-            extInfos = extend.split("###");
-        } catch (Throwable th) {
-        }
+        this.extString = extend;
     }
 
     @Override
@@ -45,7 +43,7 @@ public class AppYsV2 extends Spider {
             JSONArray jsonArray = null;
             if (!url.isEmpty()) {
                 SpiderDebug.log(url);
-                String json = desc(SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content, (byte) 0);
+                String json = SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content;
                 JSONObject obj = new JSONObject(json);
                 if (obj.has("list") && obj.get("list") instanceof JSONArray) {
                     jsonArray = obj.getJSONArray("list");
@@ -155,7 +153,7 @@ public class AppYsV2 extends Spider {
                 isTV = true;
             }
             SpiderDebug.log(url);
-            String json = desc(SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content, (byte) 1);
+            String json = SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content;
             JSONObject obj = new JSONObject(json);
             JSONArray videos = new JSONArray();
             if (isTV) {
@@ -213,7 +211,7 @@ public class AppYsV2 extends Spider {
             url = url.replace("筛选year", (extend != null && extend.containsKey("year")) ? extend.get("year") : "");
             url = url.replace("排序", (extend != null && extend.containsKey("排序")) ? extend.get("排序") : "");
             SpiderDebug.log(url);
-            String json = desc(SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content, (byte) 2);
+            String json = SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content;
             JSONObject obj = new JSONObject(json);
             int totalPg = Integer.MAX_VALUE;
             try {
@@ -280,7 +278,7 @@ public class AppYsV2 extends Spider {
             String apiUrl = getApiUrl();
             String url = getPlayUrlPrefix(apiUrl) + ids.get(0);
             SpiderDebug.log(url);
-            String json = desc(SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content, (byte) 3);
+            String json = SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content;
             JSONObject obj = new JSONObject(json);
             JSONObject result = new JSONObject();
             JSONObject vod = new JSONObject();
@@ -301,7 +299,7 @@ public class AppYsV2 extends Spider {
             String apiUrl = getApiUrl();
             String url = getSearchUrl(apiUrl, URLEncoder.encode(key));
             //System.out.println(url);
-            String json = desc(SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content, (byte) 5);
+            String json = SpiderReq.get(new SpiderUrl(url, getHeaders(url))).content;
             JSONObject obj = new JSONObject(json);
             JSONArray jsonArray = null;
             JSONArray videos = new JSONArray();
@@ -349,7 +347,8 @@ public class AppYsV2 extends Spider {
                 parseUrls = new ArrayList<>();
             String parseUrl = getCustomJxUrl(flag);
             if (!parseUrl.isEmpty()) {
-                parseUrls.add(0, parseUrl);
+                parseUrls.clear();
+                parseUrls.add(parseUrl);
             }
             if (!parseUrls.isEmpty()) {
                 JSONObject result = getFinalVideo(flag, parseUrls, id);
@@ -737,28 +736,14 @@ public class AppYsV2 extends Spider {
             JSONObject playList = data.getJSONObject("videolist");
             Iterator<String> playListKeys = playList.keys();
             while (playListKeys.hasNext()) {
-                String flag = playListKeys.next();
-                ArrayList<String> parseUrls = parseUrlMap.get(flag);
-                if (parseUrls == null) {
-                    parseUrls = new ArrayList<>();
-                    parseUrlMap.put(flag, parseUrls);
-                }
-                JSONArray playListUrls = playList.getJSONArray(flag);
+                String from = playListKeys.next();
+                JSONArray playListUrls = playList.getJSONArray(from);
                 ArrayList<String> urls = new ArrayList<>();
                 for (int j = 0; j < playListUrls.length(); j++) {
                     JSONObject urlObj = playListUrls.getJSONObject(j);
-                    String url = urlObj.getString("url");
-                    if (url.contains("url=")) {
-                        int spIdx = url.indexOf("url=") + 4;
-                        String pUrl = url.substring(0, spIdx).trim();
-                        if (!pUrl.isEmpty() && !parseUrls.contains(pUrl))
-                            parseUrls.add(pUrl);
-                        urls.add(urlObj.getString("title") + "$" + url.substring(spIdx).trim());
-                    } else {
-                        urls.add(urlObj.getString("title") + "$" + url);
-                    }
+                    urls.add(urlObj.getString("title") + "$" + urlObj.getString("url"));
                 }
-                playFlags.add(flag);
+                playFlags.add(from);
                 playUrls.add(TextUtils.join("#", urls));
             }
         }
@@ -773,7 +758,7 @@ public class AppYsV2 extends Spider {
             if (parseUrl.isEmpty() || parseUrl.equals("null"))
                 continue;
             String playUrl = parseUrl + url;
-            String content = desc(SpiderReq.get(new SpiderUrl(playUrl, null)).content, (byte) 4);
+            String content = SpiderReq.get(new SpiderUrl(playUrl, null)).content;
             JSONObject tryJson = null;
             try {
                 tryJson = Misc.jsonParse(url, content);
@@ -819,26 +804,28 @@ public class AppYsV2 extends Spider {
 
 
     private String getApiUrl() {
-        if (extInfos == null || extInfos.length < 2)
+        String[] urls = extString.split("###");
+        if (urls.length < 2)
             return "";
-        JSONObject siteRule = fetchRule(extInfos[1].trim());
+        JSONObject siteRule = fetchRule(urls[1].trim());
         if (siteRule == null)
             return "";
         try {
-            return siteRule.getJSONObject("sites").getJSONObject(extInfos[0].trim()).getString("url");
+            return siteRule.getJSONObject("sites").getJSONObject(urls[0].trim()).getString("url");
         } catch (JSONException e) {
         }
         return "";
     }
 
     private String getCustomJxUrl(String flag) {
-        if (extInfos == null || extInfos.length < 2)
+        String[] urls = extString.split("###");
+        if (urls.length < 2)
             return "";
-        JSONObject siteRule = fetchRule(extInfos[1].trim());
+        JSONObject siteRule = fetchRule(urls[1].trim());
         if (siteRule == null)
             return "";
         try {
-            JSONArray jxArray = siteRule.getJSONObject("sites").getJSONObject(extInfos[0].trim()).optJSONArray("jx");
+            JSONArray jxArray = siteRule.getJSONObject("sites").getJSONObject(urls[0].trim()).optJSONArray("jx");
             if (jxArray != null)
                 for (int i = 0; i < jxArray.length(); i++) {
                     JSONArray jxUrls = jxArray.getJSONArray(i);
@@ -861,8 +848,6 @@ public class AppYsV2 extends Spider {
         return "";
     }
 
-    private String[] extInfos = null;
-
     private static HashMap<String, JSONObject> rules = new HashMap<>();
 
     private synchronized JSONObject fetchRule(String ruleUrl) {
@@ -879,10 +864,4 @@ public class AppYsV2 extends Spider {
         return object;
     }
 
-    protected String desc(String src, byte type) {
-        if (extInfos.length > 2) {
-            String descFlag = extInfos[2];
-        }
-        return src;
-    }
 }
